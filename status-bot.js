@@ -1,5 +1,5 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
-const axios = require('axios');
+import { Client, GatewayIntentBits, EmbedBuilder } from 'discord.js';
+import axios from 'axios';
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
