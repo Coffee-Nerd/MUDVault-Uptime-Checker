@@ -2,7 +2,7 @@ import { Client, GatewayIntentBits, EmbedBuilder } from 'discord.js';
 import axios from 'axios';
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
 
 const SERVICES = [
     {
@@ -12,6 +12,7 @@ const SERVICES = [
         messageId: '1366038668602511400',
         upChannelName: '🟢 mudvault-up',
         downChannelName: '🔴 mudvault-down',
+        wasUp: true, // Add tracking flag
     },
     {
         name: 'Dark Wizardry Web Client',
@@ -20,8 +21,11 @@ const SERVICES = [
         messageId: '1366038675699400835',
         upChannelName: '🟢 webclient-up',
         downChannelName: '🔴 webclient-down',
+        wasUp: true, // Add tracking flag
     },
 ];
+
+const NOTIFY_USER_ID = '609275797475164161';
 
 async function checkWebsite(url) {
     try {
@@ -49,10 +53,8 @@ async function updateStatus(service) {
         const channel = await client.channels.fetch(service.channelId);
         const message = await channel.messages.fetch(service.messageId);
 
-        // Update the message
         await message.edit({ embeds: [embed] });
 
-        // Update the channel name
         const desiredName = isUp ? service.upChannelName : service.downChannelName;
         if (channel.name !== desiredName) {
             await channel.setName(desiredName);
@@ -60,6 +62,13 @@ async function updateStatus(service) {
         } else {
             console.log(`🔄 No channel name change needed for ${service.name}`);
         }
+
+        // Ping you if it goes from up to down
+        if (!isUp && service.wasUp) {
+            await channel.send(`<@${NOTIFY_USER_ID}> ⚠️ **${service.name} is DOWN!**`);
+            console.log(`⚠️ Alert sent for ${service.name} going down.`);
+        }
+        service.wasUp = isUp; // Update the tracking flag
     } catch (error) {
         console.error(`❌ Failed to update ${service.name}:`, error);
     }
