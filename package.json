@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Discord status monitor for MudVault and Dark Wizardry Web Client",
   "main": "status-bot.js",
-  "type": "module",
   "scripts": {
     "start": "node status-bot.js"
   },
