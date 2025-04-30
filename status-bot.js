@@ -33,7 +33,7 @@ const SERVICES = [
         host: 'darkwiz.org',
         port: 6969,
         channelId: '1367121064030638160',
-        messageId: null, // will send first message if null
+        messageId: '1367132886897266719', // <— hardcoded ID
         upChannelName: '🟢 dark-wizardry-up',
         downChannelName: '🔴 dark-wizardry-down',
         wasUp: true,
@@ -85,11 +85,8 @@ async function updateStatus(service) {
     let isUp;
     if (service.url) {
         isUp = await checkWebsite(service.url);
-    } else if (service.host && service.port) {
-        isUp = await checkTcp(service.host, service.port);
     } else {
-        console.error(`Service ${service.name} missing url or host/port`);
-        return;
+        isUp = await checkTcp(service.host, service.port);
     }
 
     const emoji = isUp ? '🟢' : '🔴';
@@ -105,16 +102,9 @@ async function updateStatus(service) {
 
     try {
         const channel = await client.channels.fetch(service.channelId);
+        const message = await channel.messages.fetch(service.messageId);
 
-        let message;
-        if (service.messageId) {
-            message = await channel.messages.fetch(service.messageId);
-            await message.edit({ embeds: [embed] });
-        } else {
-            message = await channel.send({ embeds: [embed] });
-            service.messageId = message.id;
-            console.log(`ℹ️ Created status message for ${service.name}: ${message.id}`);
-        }
+        await message.edit({ embeds: [embed] });
 
         const desiredName = isUp ? service.upChannelName : service.downChannelName;
         if (channel.name !== desiredName) {
