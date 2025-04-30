@@ -1,8 +1,13 @@
 import { Client, GatewayIntentBits, EmbedBuilder } from 'discord.js';
 import axios from 'axios';
-const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+import net from 'net';
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
+const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+const NOTIFY_USER_ID = '609275797475164161';
+
+const client = new Client({
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
+});
 
 const SERVICES = [
     {
@@ -12,7 +17,7 @@ const SERVICES = [
         messageId: '1366038668602511400',
         upChannelName: '🟢 mudvault-up',
         downChannelName: '🔴 mudvault-down',
-        wasUp: true, // Add tracking flag
+        wasUp: true,
     },
     {
         name: 'Dark Wizardry Web Client',
@@ -21,23 +26,72 @@ const SERVICES = [
         messageId: '1366038675699400835',
         upChannelName: '🟢 webclient-up',
         downChannelName: '🔴 webclient-down',
-        wasUp: true, // Add tracking flag
+        wasUp: true,
+    },
+    {
+        name: 'Dark Wizardry MUD',
+        host: 'darkwiz.org',
+        port: 6969,
+        channelId: '1367121064030638160',
+        messageId: null, // will send first message if null
+        upChannelName: '🟢 dark-wizardry-up',
+        downChannelName: '🔴 dark-wizardry-down',
+        wasUp: true,
     },
 ];
 
-const NOTIFY_USER_ID = '609275797475164161';
-
 async function checkWebsite(url) {
     try {
-        const response = await axios.get(url, { timeout: 5000 });
-        return response.status >= 200 && response.status < 300;
+        const res = await axios.get(url, { timeout: 5000 });
+        return res.status >= 200 && res.status < 300;
     } catch {
         return false;
     }
 }
 
+async function checkTcp(host, port, timeout = 5000) {
+    return new Promise(resolve => {
+        const socket = new net.Socket();
+        let done = false;
+
+        socket.setTimeout(timeout);
+
+        socket.once('connect', () => {
+            done = true;
+            socket.destroy();
+            resolve(true);
+        });
+
+        socket.once('timeout', () => {
+            if (!done) {
+                done = true;
+                socket.destroy();
+                resolve(false);
+            }
+        });
+
+        socket.once('error', () => {
+            if (!done) {
+                done = true;
+                resolve(false);
+            }
+        });
+
+        socket.connect(port, host);
+    });
+}
+
 async function updateStatus(service) {
-    const isUp = await checkWebsite(service.url);
+    let isUp;
+    if (service.url) {
+        isUp = await checkWebsite(service.url);
+    } else if (service.host && service.port) {
+        isUp = await checkTcp(service.host, service.port);
+    } else {
+        console.error(`Service ${service.name} missing url or host/port`);
+        return;
+    }
+
     const emoji = isUp ? '🟢' : '🔴';
     const statusText = isUp ? '**ACTIVE**' : '**DOWN**';
     const color = isUp ? 0x00ff00 : 0xff0000;
@@ -47,39 +101,44 @@ async function updateStatus(service) {
         .setDescription(`${emoji} ${statusText}`)
         .setColor(color)
         .setFooter({ text: `Monitoring ${service.name}` })
-        .setTimestamp(new Date());
+        .setTimestamp();
 
     try {
         const channel = await client.channels.fetch(service.channelId);
-        const message = await channel.messages.fetch(service.messageId);
 
-        await message.edit({ embeds: [embed] });
+        let message;
+        if (service.messageId) {
+            message = await channel.messages.fetch(service.messageId);
+            await message.edit({ embeds: [embed] });
+        } else {
+            message = await channel.send({ embeds: [embed] });
+            service.messageId = message.id;
+            console.log(`ℹ️ Created status message for ${service.name}: ${message.id}`);
+        }
 
         const desiredName = isUp ? service.upChannelName : service.downChannelName;
         if (channel.name !== desiredName) {
             await channel.setName(desiredName);
-            console.log(`✅ Updated channel name for ${service.name} to "${desiredName}"`);
-        } else {
-            console.log(`🔄 No channel name change needed for ${service.name}`);
+            console.log(`✅ Renamed channel for ${service.name} to "${desiredName}"`);
         }
 
-        // Ping you if it goes from up to down
         if (!isUp && service.wasUp) {
             await channel.send(`<@${NOTIFY_USER_ID}> ⚠️ **${service.name} is DOWN!**`);
-            console.log(`⚠️ Alert sent for ${service.name} going down.`);
+            console.log(`⚠️ Alert sent for ${service.name} down.`);
         }
-        service.wasUp = isUp; // Update the tracking flag
-    } catch (error) {
-        console.error(`❌ Failed to update ${service.name}:`, error);
+
+        service.wasUp = isUp;
+    } catch (err) {
+        console.error(`❌ Failed updating ${service.name}:`, err);
     }
 }
 
 client.once('ready', async () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
-    for (const service of SERVICES) {
-        await updateStatus(service);
+    for (const svc of SERVICES) {
+        await updateStatus(svc);
     }
-    console.log('✅ Status check complete, exiting.');
+    console.log('✅ All checks complete, shutting down.');
     client.destroy();
 });
 
